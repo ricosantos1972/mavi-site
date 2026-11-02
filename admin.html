@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Painel · MAVI Streaming+</title>
+<link rel="icon" href="img/favicon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a href="./"><img src="img/logo.png" alt="MAVI Streaming+"></a>
+    <nav><span style="color:var(--dim);font-weight:700">Painel</span><a href="#" id="btnOut" class="hidden">Sair</a></nav>
+  </header>
+
+  <div id="loginBox" class="panel" style="max-width:420px;margin:30px auto">
+    <h2 style="margin-top:0">Entrar no painel</h2>
+    <form id="loginForm">
+      <label for="email">E-mail</label><input id="email" type="email" autocomplete="username" required>
+      <label for="pw">Senha</label><input id="pw" type="password" autocomplete="current-password" required>
+      <div style="margin-top:18px"><button class="btn" type="submit">Entrar</button></div>
+      <div id="loginMsg" class="msg err"></div>
+    </form>
+  </div>
+
+  <div id="main" class="hidden">
+    <div class="panel">
+      <form id="searchForm" style="display:flex;gap:10px;flex-wrap:wrap">
+        <input id="q" placeholder="Buscar por MAC, Device Key ou anotação" style="flex:1;min-width:220px">
+        <button class="btn" type="submit">Buscar</button>
+      </form>
+      <p id="count" style="color:var(--dim);margin:10px 0 0;font-size:14px"></p>
+    </div>
+    <div class="panel table-wrap">
+      <table>
+        <thead><tr><th>Aparelho</th><th>Situação</th><th>Vence</th><th>Listas</th><th>Último acesso</th><th>Anotação</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<dialog id="dlg">
+  <form id="actForm">
+    <h2 style="margin-top:0">Ativar aparelho</h2>
+    <p style="color:var(--dim);margin-top:0" id="dlgDev"></p>
+    <label for="plan">Plano</label>
+    <select id="plan">
+      <option value="mensal">Mensal (30 dias)</option>
+      <option value="anual">Anual (365 dias)</option>
+      <option value="vitalicio">Vitalício</option>
+      <option value="cortesia">Cortesia (grátis)</option>
+    </select>
+    <div id="daysBox">
+      <label for="days">Dias a somar</label>
+      <input id="days" type="number" min="1" max="3650" value="30">
+    </div>
+    <label for="note">Anotação (nome do cliente, parceiro...)</label>
+    <input id="note">
+    <div class="msg err" id="dlgMsg"></div>
+    <div class="btns" style="margin-top:8px">
+      <button class="btn" type="submit">Ativar</button>
+      <button class="btn ghost" type="button" id="btnBlock">Bloquear</button>
+      <button class="btn ghost" type="button" id="btnReset">Zerar</button>
+      <button class="btn ghost" type="button" id="dlgCancel">Fechar</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let token = null, cur = null;
+const DAYS = { mensal: 30, anual: 365, cortesia: 30 };
+
+function getTok() { try { const t = JSON.parse(sessionStorage.getItem('mavi_admin') || 'null'); return t && t.exp > Date.now() ? t.tok : null; } catch (_) { return null; } }
+function setTok(t, secs) { token = t; try { t ? sessionStorage.setItem('mavi_admin', JSON.stringify({ tok: t, exp: Date.now() + secs * 1000 - 60000 })) : sessionStorage.removeItem('mavi_admin'); } catch (_) {} }
+
+async function search() {
+  try {
+    const rows = await rpc('mavi_admin_devices', { p_search: $('q').value.trim() || null }, token);
+    $('count').textContent = `${rows.length} aparelho(s)`;
+    const tb = $('rows'); tb.innerHTML = '';
+    rows.forEach(d => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td><b>${esc(d.mac)}</b><br><small style="color:var(--dim)">Key ${esc(d.device_key)} · v${esc(d.app_version || '?')}</small></td>
+        <td><span class="pill ${esc(d.status)}">${esc(d.status)}</span><br><small style="color:var(--dim)">${esc(d.plan)}</small></td>
+        <td>${d.status === 'vitalicio' ? '—' : esc(fmtDate(d.expires_at))}</td>
+        <td>${d.lists}</td>
+        <td>${esc(new Date(d.last_seen).toLocaleString('pt-BR'))}</td>
+        <td>${esc(d.note || '')}</td>
+        <td><button class="btn small">Gerenciar</button></td>`;
+      tr.querySelector('button').onclick = () => openDlg(d);
+      tb.appendChild(tr);
+    });
+  } catch (e) {
+    if (/JWT|expired|acesso negado/i.test(e.message)) { setTok(null); location.reload(); }
+    else alert(e.message);
+  }
+}
+
+function show() { $('loginBox').classList.add('hidden'); $('main').classList.remove('hidden'); $('btnOut').classList.remove('hidden'); search(); }
+
+$('loginForm').onsubmit = async e => {
+  e.preventDefault(); $('loginMsg').textContent = '';
+  try {
+    const s = await signIn($('email').value.trim(), $('pw').value);
+    setTok(s.access_token, s.expires_in || 3600);
+    const ok = await rpc('mavi_is_admin', {}, token);
+    if (!ok) { setTok(null); throw new Error('Este e-mail não tem acesso ao painel.'); }
+    show();
+  } catch (err) { $('loginMsg').textContent = err.message; }
+};
+$('btnOut').onclick = e => { e.preventDefault(); setTok(null); location.reload(); };
+$('searchForm').onsubmit = e => { e.preventDefault(); search(); };
+
+function openDlg(d) {
+  cur = d;
+  $('dlgDev').textContent = `${d.mac} · ${d.status}${d.expires_at ? ' até ' + fmtDate(d.expires_at) : ''}`;
+  $('note').value = d.note || '';
+  $('plan').value = 'mensal'; $('days').value = 30; $('daysBox').classList.remove('hidden');
+  $('btnBlock').textContent = d.blocked ? 'Desbloquear' : 'Bloquear';
+  $('dlgMsg').textContent = '';
+  $('dlg').showModal();
+}
+$('plan').onchange = () => {
+  const p = $('plan').value;
+  $('daysBox').classList.toggle('hidden', p === 'vitalicio');
+  if (DAYS[p]) $('days').value = DAYS[p];
+};
+$('dlgCancel').onclick = () => $('dlg').close();
+
+async function act(fn, args) {
+  try { await rpc(fn, args, token); $('dlg').close(); search(); }
+  catch (e) { $('dlgMsg').textContent = e.message; }
+}
+$('actForm').onsubmit = e => {
+  e.preventDefault();
+  act('mavi_admin_activate', { p_mac: cur.mac, p_plan: $('plan').value, p_days: parseInt($('days').value, 10) || null, p_note: $('note').value.trim() || null });
+};
+$('btnBlock').onclick = () => act('mavi_admin_set', { p_mac: cur.mac, p_blocked: !cur.blocked, p_note: $('note').value.trim() || null });
+$('btnReset').onclick = () => { if (confirm('Voltar este aparelho para "teste" (remove plano pago)?')) act('mavi_admin_set', { p_mac: cur.mac, p_reset: true }); };
+
+token = getTok();
+if (token) show();
+</script>
+</body>
+</html>
