@@ -11,7 +11,7 @@
 <div class="wrap" style="max-width:760px">
   <header class="top">
     <a href="./"><img src="img/logo.png" alt="MAVI Streaming+"></a>
-    <nav><a href="listas.html" class="on">Minhas listas</a><a href="privacidade.html">Privacidade</a></nav>
+    <nav><a href="listas.html" class="on">Minhas listas</a><a href="registrar.html">Registrar</a><a href="privacidade.html">Privacidade</a></nav>
   </header>
 
   <!-- Entrar com o aparelho -->
@@ -33,7 +33,7 @@
     <div class="panel">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
         <div class="status"><span id="stDot" class="dot"></span><span id="stText"></span></div>
-        <button class="btn ghost small" id="btnOut">Sair</button>
+        <div class="btns"><a class="btn small" id="btnReg" href="registrar.html">Registrar</a><button class="btn ghost small" id="btnOut">Sair</button></div>
       </div>
       <p style="color:var(--dim);margin:8px 0 0;font-size:14px">Aparelho <span id="devMac"></span></p>
     </div>
@@ -78,8 +78,8 @@ const $ = id => document.getElementById(id);
 let dev = null;     // { mac, key }
 let editId = null;
 
-function load() { try { return JSON.parse(localStorage.getItem('mavi_dev') || 'null'); } catch (_) { return null; } }
-function save(d) { try { d ? localStorage.setItem('mavi_dev', JSON.stringify(d)) : localStorage.removeItem('mavi_dev'); } catch (_) {} }
+const load = loadDev, save = saveDev;
+maskMac($('mac')); onlyDigits($('key'), 6);
 
 function render(st) {
   $('loginBox').classList.add('hidden');
@@ -87,6 +87,7 @@ function render(st) {
   $('stText').textContent = statusText(st);
   $('stDot').className = 'dot ' + dotClass(st.status);
   $('devMac').textContent = dev.mac;
+  $('btnReg').textContent = st.status === 'ativo' || st.status === 'vitalicio' ? 'Renovar' : 'Registrar';
   const box = $('lists');
   box.innerHTML = '';
   $('noLists').classList.toggle('hidden', st.lists.length > 0);

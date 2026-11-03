@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Registrar · MAVI Streaming+</title>
+<link rel="icon" href="img/favicon.png">
+<link rel="stylesheet" href="style.css">
+<style>
+  .plan { cursor: pointer; text-align: center; transition: border-color .15s, transform .15s; }
+  .plan:hover { transform: translateY(-2px); }
+  .plan.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+  .plan .price { font-size: 22px; }
+  .tabs { display: flex; gap: 8px; margin: 6px 0 4px; }
+  .tabs button { flex: 1; }
+  .tabs .btn.ghost.on { border-color: var(--accent); color: var(--accent2); }
+  .code { text-transform: uppercase; letter-spacing: 2px; font-weight: 800; }
+</style>
+</head>
+<body>
+<div class="wrap" style="max-width:760px">
+  <header class="top">
+    <a href="./"><img src="img/logo.png" alt="MAVI Streaming+"></a>
+    <nav><a href="listas.html">Minhas listas</a><a href="registrar.html" class="on">Registrar</a><a href="privacidade.html">Privacidade</a></nav>
+  </header>
+
+  <div class="panel">
+    <h2 style="margin-top:0">Registrar o aplicativo</h2>
+    <p style="color:var(--dim);margin-top:0">O <b>MAC</b> e a <b>Device Key</b> aparecem no app, na tela inicial e em <b>Configurações</b>.</p>
+    <div class="row">
+      <div><label for="mac">MAC</label><input id="mac" placeholder="52:98:30:3F:97:69" autocomplete="off"></div>
+      <div><label for="key">Device Key</label><input id="key" placeholder="6 números" inputmode="numeric" autocomplete="off"></div>
+    </div>
+    <div id="cur" class="status hidden" style="margin-top:16px"><span id="curDot" class="dot"></span><span id="curText"></span></div>
+  </div>
+
+  <div class="panel">
+    <h2 style="margin-top:0">Como deseja ativar?</h2>
+    <div class="tabs">
+      <button class="btn ghost on" id="tabCode" type="button">Tenho um código</button>
+      <button class="btn ghost" id="tabPay" type="button">Comprar um plano</button>
+    </div>
+
+    <!-- Código de ativação -->
+    <form id="codeBox">
+      <label for="code">Código de ativação</label>
+      <input id="code" class="code" placeholder="XXXX-XXXX-XXXX" autocomplete="off" maxlength="14">
+      <div style="margin-top:18px"><button class="btn" type="submit" id="btnCode">Ativar</button></div>
+    </form>
+
+    <!-- Compra (em breve: Mercado Pago) -->
+    <div id="payBox" class="hidden">
+      <div class="grid3" style="margin-top:10px">
+        <div class="card plan sel" data-plan="mensal"><h3>Mensal</h3><div class="price">Em breve</div><p>30 dias</p></div>
+        <div class="card plan" data-plan="anual"><h3>Anual</h3><div class="price">Em breve</div><p>365 dias</p></div>
+        <div class="card plan" data-plan="vitalicio"><h3>Vitalício</h3><div class="price">Em breve</div><p>Para sempre neste aparelho</p></div>
+      </div>
+      <div style="margin-top:18px"><button class="btn" type="button" id="btnPay">Pagar com Pix ou cartão</button></div>
+      <p class="notice" style="margin-top:14px">Pagamento online em breve (Mercado Pago). Por enquanto, a ativação é feita com um código.</p>
+    </div>
+
+    <div id="msg" class="msg"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+maskMac($('mac')); onlyDigits($('key'), 6);
+
+// Código: só letras/números, com hífen a cada 4 (XXXX-XXXX-XXXX)
+$('code').addEventListener('input', e => {
+  const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+  e.target.value = (v.match(/.{1,4}/g) || []).join('-');
+});
+
+function msg(t, ok) { $('msg').className = 'msg ' + (ok ? 'ok' : 'err'); $('msg').textContent = t; }
+
+function showStatus(st) {
+  $('cur').classList.remove('hidden');
+  $('curText').textContent = statusText(st);
+  $('curDot').className = 'dot ' + dotClass(st.status);
+}
+
+function dev() {
+  const mac = normMac($('mac').value), key = $('key').value.trim();
+  if (!/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(mac) || !/^\d{6}$/.test(key)) { msg('Informe o MAC e a Device Key (6 números) do app.'); return null; }
+  return { mac, key };
+}
+
+// Mostra a situação atual quando MAC e Key estiverem completos
+async function check() {
+  const mac = normMac($('mac').value), key = $('key').value.trim();
+  if (mac.length !== 17 || key.length !== 6) return;
+  try { const st = await rpc('mavi_status', { p_mac: mac, p_key: key }); showStatus(st); saveDev({ mac, key }); $('msg').textContent = ''; }
+  catch (e) { $('cur').classList.add('hidden'); msg(e.message); }
+}
+$('mac').addEventListener('input', check);
+$('key').addEventListener('input', check);
+
+$('tabCode').onclick = () => { $('tabCode').classList.add('on'); $('tabPay').classList.remove('on'); $('codeBox').classList.remove('hidden'); $('payBox').classList.add('hidden'); $('msg').textContent = ''; };
+$('tabPay').onclick = () => { $('tabPay').classList.add('on'); $('tabCode').classList.remove('on'); $('payBox').classList.remove('hidden'); $('codeBox').classList.add('hidden'); $('msg').textContent = ''; };
+document.querySelectorAll('.plan').forEach(c => c.onclick = () => {
+  document.querySelectorAll('.plan').forEach(x => x.classList.remove('sel')); c.classList.add('sel');
+});
+$('btnPay').onclick = () => msg('Pagamento online em breve. Use um código de ativação por enquanto.');
+
+$('codeBox').onsubmit = async e => {
+  e.preventDefault();
+  const d = dev(); if (!d) return;
+  const code = $('code').value.replace(/[^A-Z0-9]/gi, '');
+  if (code.length < 8) { msg('Digite o código de ativação.'); return; }
+  $('btnCode').disabled = true; msg('Ativando...', true);
+  try {
+    const st = await rpc('mavi_redeem', { p_mac: d.mac, p_key: d.key, p_code: code });
+    showStatus(st); saveDev(d);
+    msg('Pronto! Aplicativo ativado. Feche e abra o app para atualizar.', true);
+    $('code').value = '';
+  } catch (err) { msg(err.message); }
+  $('btnCode').disabled = false;
+};
+
+// Preenche com o aparelho já usado neste navegador (ou ?mac=&key= no link)
+(() => {
+  const q = new URLSearchParams(location.search);
+  const d = q.get('mac') && q.get('key') ? { mac: normMac(q.get('mac')), key: q.get('key') } : loadDev();
+  if (d) { $('mac').value = d.mac; $('key').value = d.key; check(); }
+})();
+</script>
+</body>
+</html>

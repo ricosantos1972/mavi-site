@@ -39,6 +39,30 @@
         <tbody id="rows"></tbody>
       </table>
     </div>
+
+    <div class="panel">
+      <h2 style="margin-top:0">Códigos de ativação</h2>
+      <p style="color:var(--dim);margin-top:0;font-size:14px">Gere códigos para clientes, cortesias ou parceiros. O cliente ativa em <b>mavistreaming.com.br/registrar</b>.</p>
+      <form id="codeForm">
+        <div class="row">
+          <div><label for="cPlan">Plano</label>
+            <select id="cPlan"><option value="mensal">Mensal</option><option value="anual">Anual</option><option value="vitalicio">Vitalício</option><option value="cortesia">Cortesia</option></select></div>
+          <div id="cDaysBox"><label for="cDays">Dias</label><input id="cDays" type="number" min="1" max="3650" value="30"></div>
+        </div>
+        <div class="row">
+          <div><label for="cQty">Quantidade</label><input id="cQty" type="number" min="1" max="200" value="1"></div>
+          <div><label for="cNote">Anotação</label><input id="cNote" placeholder="Ex.: parceiro X, promoção..."></div>
+        </div>
+        <div style="margin-top:16px"><button class="btn" type="submit">Gerar códigos</button></div>
+      </form>
+      <div id="newCodes" class="notice hidden" style="margin-top:16px;font-family:monospace;font-size:16px;white-space:pre-wrap"></div>
+      <div class="table-wrap" style="margin-top:16px">
+        <table>
+          <thead><tr><th>Código</th><th>Plano</th><th>Usos</th><th>Anotação</th><th>Criado</th><th></th></tr></thead>
+          <tbody id="codeRows"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -101,7 +125,44 @@ async function search() {
   }
 }
 
-function show() { $('loginBox').classList.add('hidden'); $('main').classList.remove('hidden'); $('btnOut').classList.remove('hidden'); search(); }
+function show() { $('loginBox').classList.add('hidden'); $('main').classList.remove('hidden'); $('btnOut').classList.remove('hidden'); search(); loadCodes(); }
+
+const fmtCode = c => (c.match(/.{1,4}/g) || []).join('-');
+async function loadCodes() {
+  try {
+    const rows = await rpc('mavi_admin_codes', {}, token);
+    const tb = $('codeRows'); tb.innerHTML = '';
+    rows.forEach(c => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td><b style="font-family:monospace">${esc(fmtCode(c.code))}</b></td>
+        <td>${esc(c.plan)}${c.days ? ' · ' + c.days + ' dias' : ''}</td>
+        <td>${c.uses}/${c.max_uses}</td><td>${esc(c.note || '')}</td>
+        <td>${esc(new Date(c.created_at).toLocaleDateString('pt-BR'))}</td>
+        <td><button class="btn ghost small">Apagar</button></td>`;
+      tr.querySelector('button').onclick = async () => {
+        if (!confirm('Apagar o código ' + fmtCode(c.code) + '?')) return;
+        try { await rpc('mavi_admin_delete_code', { p_code: c.code }, token); loadCodes(); } catch (e) { alert(e.message); }
+      };
+      tb.appendChild(tr);
+    });
+  } catch (e) { $('codeRows').innerHTML = `<tr><td colspan="6" style="color:var(--bad)">${esc(e.message)}</td></tr>`; }
+}
+$('cPlan').onchange = () => {
+  const p = $('cPlan').value;
+  $('cDaysBox').classList.toggle('hidden', p === 'vitalicio');
+  $('cDays').value = p === 'anual' ? 365 : 30;
+};
+$('codeForm').onsubmit = async e => {
+  e.preventDefault();
+  try {
+    const codes = await rpc('mavi_admin_create_codes', {
+      p_plan: $('cPlan').value, p_days: parseInt($('cDays').value, 10) || null,
+      p_qty: parseInt($('cQty').value, 10) || 1, p_note: $('cNote').value.trim() || null }, token);
+    $('newCodes').classList.remove('hidden');
+    $('newCodes').textContent = 'Códigos gerados:\n' + codes.map(fmtCode).join('\n');
+    loadCodes();
+  } catch (err) { alert(err.message); }
+};
 
 $('loginForm').onsubmit = async e => {
   e.preventDefault(); $('loginMsg').textContent = '';

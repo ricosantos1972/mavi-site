@@ -39,8 +39,8 @@ function fmtDate(iso) {
 
 function statusText(st) {
   switch (st.status) {
-    case 'vitalicio': return 'Aplicativo Ativado - vitalício';
-    case 'ativo': return `Aplicativo Ativado - vence em ${fmtDate(st.expires_at)}`;
+    case 'vitalicio': return 'Ativado: vitalício';
+    case 'ativo': return `Ativado até: ${fmtDate(st.expires_at)}`;
     case 'teste': return `Teste grátis - vence em ${fmtDate(st.expires_at)}`;
     case 'bloqueado': return 'Aparelho bloqueado';
     default: return `Ativação vencida${st.expires_at ? ' em ' + fmtDate(st.expires_at) : ''}`;
@@ -69,3 +69,21 @@ function normMac(s) {
   const hex = String(s || '').toUpperCase().replace(/[^0-9A-F]/g, '');
   return hex.length === 12 ? hex.match(/.{2}/g).join(':') : String(s || '').trim().toUpperCase();
 }
+
+// Máscara do MAC: digita só letras/números e os ":" entram sozinhos (52:98:30:3F:97:69)
+function maskMac(input) {
+  input.setAttribute('maxlength', '17');
+  input.setAttribute('autocapitalize', 'characters');
+  input.setAttribute('spellcheck', 'false');
+  input.addEventListener('input', () => {
+    const hex = input.value.toUpperCase().replace(/[^0-9A-F]/g, '').slice(0, 12);
+    input.value = (hex.match(/.{1,2}/g) || []).join(':');
+  });
+}
+function onlyDigits(input, max) {
+  input.addEventListener('input', () => { input.value = input.value.replace(/\D/g, '').slice(0, max); });
+}
+
+// Aparelho lembrado neste navegador (para não digitar de novo)
+function loadDev() { try { return JSON.parse(localStorage.getItem('mavi_dev') || 'null'); } catch (_) { return null; } }
+function saveDev(d) { try { d ? localStorage.setItem('mavi_dev', JSON.stringify(d)) : localStorage.removeItem('mavi_dev'); } catch (_) {} }
