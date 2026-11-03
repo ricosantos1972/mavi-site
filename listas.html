@@ -62,8 +62,14 @@
     <input id="lServer" placeholder="http://servidor.com:8080">
     <div class="row">
       <div><label for="lUser">Usuário</label><input id="lUser" autocomplete="off"></div>
-      <div><label for="lPass">Senha</label><input id="lPass" autocomplete="off"></div>
+      <div><label for="lPass">Senha</label><input id="lPass" type="password" autocomplete="new-password"></div>
     </div>
+    <label class="check"><input type="checkbox" id="lLock"> Proteger lista com PIN</label>
+    <div id="pinBox" class="row hidden">
+      <div><input id="lPin" type="password" inputmode="numeric" placeholder="Definir PIN (4 a 6 números)" autocomplete="new-password"></div>
+      <div><input id="lPin2" type="password" inputmode="numeric" placeholder="Confirmar PIN" autocomplete="new-password"></div>
+    </div>
+    <p id="pinHint" class="hidden" style="color:var(--dim);font-size:13px;margin:6px 0 0">Deixe o PIN em branco para manter o atual.</p>
     <div class="msg err" id="dlgMsg"></div>
     <div class="btns" style="margin-top:8px">
       <button class="btn" type="submit">Salvar</button>
@@ -72,11 +78,48 @@
   </form>
 </dialog>
 
+<dialog id="pinDlg">
+  <form id="pinForm">
+    <h2 style="margin-top:0">🔒 <span id="pinTitle"></span></h2>
+    <p style="color:var(--dim);margin-top:0">Esta lista é protegida. Digite o PIN.</p>
+    <input id="pinIn" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="PIN">
+    <div class="msg err" id="pinMsg"></div>
+    <div class="btns" style="margin-top:8px">
+      <button class="btn" type="submit">OK</button>
+      <button class="btn ghost" type="button" id="pinCancel">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
+<style>
+  .check { display: flex; align-items: center; gap: 10px; margin: 16px 0 4px; color: var(--text); font-weight: 700; cursor: pointer; }
+  .check input { width: 20px; height: 20px; accent-color: var(--accent); }
+</style>
+
 <script src="app.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 let dev = null;     // { mac, key }
-let editId = null;
+let editId = null, editLocked = false, editPin = null;
+onlyDigits($('lPin'), 6); onlyDigits($('lPin2'), 6); onlyDigits($('pinIn'), 6);
+$('lLock').onchange = () => { $('pinBox').classList.toggle('hidden', !$('lLock').checked); $('pinHint').classList.toggle('hidden', !($('lLock').checked && editLocked)); };
+
+// Pede o PIN; o servidor confere. Resolve com { pin, lista completa } ou null se cancelar.
+function askPin(l) {
+  return new Promise(resolve => {
+    $('pinTitle').textContent = l.name; $('pinIn').value = ''; $('pinMsg').textContent = '';
+    $('pinDlg').showModal(); $('pinIn').focus();
+    $('pinCancel').onclick = () => { $('pinDlg').close(); resolve(null); };
+    $('pinForm').onsubmit = async e => {
+      e.preventDefault();
+      const pin = $('pinIn').value;
+      try {
+        const full = await rpc('mavi_list_unlock', { p_mac: dev.mac, p_key: dev.key, p_id: l.id, p_pin: pin });
+        $('pinDlg').close(); resolve({ pin, full });
+      } catch (err) { $('pinMsg').textContent = err.message; $('pinIn').value = ''; }
+    };
+  });
+}
 
 const load = loadDev, save = saveDev;
 maskMac($('mac')); onlyDigits($('key'), 6);
@@ -95,12 +138,18 @@ function render(st) {
     let host = l.server; try { host = new URL(l.server).host; } catch (_) {}
     const el = document.createElement('div');
     el.className = 'list-item';
-    el.innerHTML = `<div><b>${esc(l.name)}</b><small>${esc(host)} · usuário ${esc(l.user)}</small></div>
+    const info = l.locked ? '🔒 Lista protegida com PIN' : `${esc(host)} · usuário ${esc(l.user)}`;
+    el.innerHTML = `<div><b>${l.locked ? '🔒 ' : ''}${esc(l.name)}</b><small>${info}</small></div>
       <div class="btns"><button class="btn ghost small" data-edit>Editar</button><button class="btn ghost small" data-del>Remover</button></div>`;
-    el.querySelector('[data-edit]').onclick = () => openDlg(l);
+    el.querySelector('[data-edit]').onclick = async () => {
+      if (!l.locked) return openDlg(l);
+      const r = await askPin(l); if (r) openDlg(r.full, r.pin);
+    };
     el.querySelector('[data-del]').onclick = async () => {
+      let pin = null;
+      if (l.locked) { const r = await askPin(l); if (!r) return; pin = r.pin; }
       if (!confirm(`Remover a lista "${l.name}"?`)) return;
-      try { render(await rpc('mavi_list_delete', { p_mac: dev.mac, p_key: dev.key, p_id: l.id })); }
+      try { render(await rpc('mavi_list_delete', { p_mac: dev.mac, p_key: dev.key, p_id: l.id, p_pin: pin })); }
       catch (e) { alert(e.message); }
     };
     box.appendChild(el);
@@ -123,8 +172,11 @@ $('loginForm').onsubmit = async e => {
 
 $('btnOut').onclick = () => { save(null); dev = null; location.reload(); };
 
-function openDlg(l) {
+function openDlg(l, pin) {
   editId = l ? l.id : null;
+  editLocked = !!(l && l.locked); editPin = pin || null;
+  $('lLock').checked = editLocked; $('lPin').value = ''; $('lPin2').value = '';
+  $('pinBox').classList.toggle('hidden', !editLocked); $('pinHint').classList.toggle('hidden', !editLocked);
   $('dlgTitle').textContent = l ? 'Editar lista' : 'Adicionar lista';
   $('lName').value = l ? l.name : '';
   $('lM3u').value = '';
@@ -151,10 +203,21 @@ $('listForm').onsubmit = async e => {
   if (!server || !user || !pass) { $('dlgMsg').textContent = 'Preencha servidor, usuário e senha, ou cole o link M3U.'; return; }
   let name = $('lName').value.trim();
   if (!name) { try { name = new URL(server).hostname; } catch (_) { name = 'Minha lista'; } }
+  // PIN
+  const lock = $('lLock').checked, p1 = $('lPin').value, p2 = $('lPin2').value;
+  let newPin = null, removePin = false;
+  if (lock) {
+    if (p1 || !editLocked) {
+      if (!/^\d{4,6}$/.test(p1)) { $('dlgMsg').textContent = 'O PIN deve ter de 4 a 6 números.'; return; }
+      if (p1 !== p2) { $('dlgMsg').textContent = 'Os PINs não conferem.'; return; }
+      newPin = p1;
+    }
+  } else if (editLocked) removePin = true;
   try {
     render(await rpc('mavi_list_save', {
       p_mac: dev.mac, p_key: dev.key, p_id: editId || crypto.randomUUID(),
       p_name: name, p_server: server, p_user: user, p_pass: pass,
+      p_pin: editPin, p_new_pin: newPin, p_remove_pin: removePin,
     }));
     $('dlg').close();
   } catch (err) { $('dlgMsg').textContent = err.message; }
