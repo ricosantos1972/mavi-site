@@ -17,6 +17,7 @@ async function rpc(fn, args, token) {
   let data = null;
   try { data = txt ? JSON.parse(txt) : null; } catch (_) { data = txt; }
   if (!r.ok) throw new Error((data && (data.message || data.msg)) || `Erro ${r.status}`);
+  if (data && !Array.isArray(data) && typeof data === 'object' && data.error) throw new Error(data.error);
   return data;
 }
 
