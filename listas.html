@@ -53,16 +53,27 @@
 <dialog id="dlg">
   <form id="listForm">
     <h2 style="margin-top:0" id="dlgTitle">Adicionar lista</h2>
+    <div class="tabs2">
+      <button type="button" class="chipbtn on" id="tX">Xtream (usuário e senha)</button>
+      <button type="button" class="chipbtn" id="tM">Link M3U</button>
+    </div>
     <label for="lName">Nome da lista</label>
     <input id="lName" placeholder="Ex.: Minha lista">
-    <label for="lM3u">Link M3U (opcional)</label>
-    <input id="lM3u" placeholder="http://servidor:porta/get.php?username=...&password=...">
-    <p style="color:var(--dim);font-size:13px;margin:6px 0 0">Ou preencha os dados abaixo:</p>
-    <label for="lServer">Servidor</label>
-    <input id="lServer" placeholder="http://servidor.com:8080">
-    <div class="row">
-      <div><label for="lUser">Usuário</label><input id="lUser" autocomplete="off"></div>
-      <div><label for="lPass">Senha</label><input id="lPass" type="password" autocomplete="new-password"></div>
+    <div id="boxX">
+      <label for="lServer">Servidor</label>
+      <input id="lServer" placeholder="http://dns-servidor.com:8080">
+      <div class="row">
+        <div><label for="lUser">Usuário</label><input id="lUser" autocomplete="off"></div>
+        <div><label for="lPass">Senha</label>
+          <div class="pw"><input id="lPass" type="password" autocomplete="new-password"><button type="button" id="eye" title="Mostrar senha">👁</button></div></div>
+      </div>
+    </div>
+    <div id="boxM" class="hidden">
+      <label for="lM3u">Link da lista M3U</label>
+      <input id="lM3u" placeholder="http://exemplo.com/lista.m3u">
+      <label for="lEpg">Link do EPG / programação (opcional, XMLTV)</label>
+      <input id="lEpg" placeholder="http://exemplo.com/epg.xml">
+      <p style="color:var(--dim);font-size:13px;margin:6px 0 0">Link com usuário e senha (get.php?username=...) vira lista Xtream automaticamente.</p>
     </div>
     <label class="check"><input type="checkbox" id="lLock"> Proteger lista com PIN</label>
     <div id="pinBox" class="row hidden">
@@ -92,6 +103,12 @@
 </dialog>
 
 <style>
+  .tabs2 { display: flex; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+  .chipbtn { border: 2px solid var(--line); background: var(--surface); color: var(--text); border-radius: 999px; padding: 8px 14px; font: 800 14px Nunito, sans-serif; cursor: pointer; }
+  .chipbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pw { position: relative; }
+  .pw input { padding-right: 44px; }
+  .pw button { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: 0; font-size: 18px; cursor: pointer; opacity: .8; }
   .check { display: flex; align-items: center; gap: 10px; margin: 16px 0 4px; color: var(--text); font-weight: 700; cursor: pointer; }
   .check input { width: 20px; height: 20px; accent-color: var(--accent); }
 </style>
@@ -100,7 +117,7 @@
 <script>
 const $ = id => document.getElementById(id);
 let dev = null;     // { mac, key }
-let editId = null, editLocked = false, editPin = null;
+let editId = null, editLocked = false, editPin = null, editType = 'xtream';
 onlyDigits($('lPin'), 6); onlyDigits($('lPin2'), 6); onlyDigits($('pinIn'), 6);
 $('lLock').onchange = () => { $('pinBox').classList.toggle('hidden', !$('lLock').checked); $('pinHint').classList.toggle('hidden', !($('lLock').checked && editLocked)); };
 
@@ -130,7 +147,7 @@ function render(st) {
   $('stText').textContent = statusText(st);
   $('stDot').className = 'dot ' + dotClass(st.status);
   $('devMac').textContent = dev.mac;
-  $('btnReg').textContent = st.status === 'ativo' || st.status === 'vitalicio' ? 'Renovar' : 'Registrar';
+  if ($('btnReg')) $('btnReg').textContent = st.status === 'ativo' || st.status === 'vitalicio' ? 'Renovar' : 'Registrar';
   const box = $('lists');
   box.innerHTML = '';
   $('noLists').classList.toggle('hidden', st.lists.length > 0);
@@ -138,7 +155,8 @@ function render(st) {
     let host = l.server; try { host = new URL(l.server).host; } catch (_) {}
     const el = document.createElement('div');
     el.className = 'list-item';
-    const info = l.locked ? '🔒 Lista protegida com PIN' : `${esc(host)} · usuário ${esc(l.user)}`;
+    const info = l.locked ? '🔒 Lista protegida com PIN'
+      : l.type === 'm3u' ? `Lista M3U · ${esc(host)}${l.epg ? ' · com EPG' : ''}` : `${esc(host)} · usuário ${esc(l.user)}`;
     el.innerHTML = `<div><b>${l.locked ? '🔒 ' : ''}${esc(l.name)}</b><small>${info}</small></div>
       <div class="btns"><button class="btn ghost small" data-edit>Editar</button><button class="btn ghost small" data-del>Remover</button></div>`;
     el.querySelector('[data-edit]').onclick = async () => {
@@ -172,17 +190,37 @@ $('loginForm').onsubmit = async e => {
 
 $('btnOut').onclick = () => { save(null); dev = null; location.reload(); };
 
+let mode = 'xtream';
+function setMode(m) {
+  mode = m;
+  $('tX').classList.toggle('on', m === 'xtream'); $('tM').classList.toggle('on', m === 'm3u');
+  $('boxX').classList.toggle('hidden', m !== 'xtream'); $('boxM').classList.toggle('hidden', m !== 'm3u');
+  $('dlgMsg').textContent = '';
+}
+$('tX').onclick = () => setMode('xtream');
+$('tM').onclick = () => setMode('m3u');
+$('eye').onclick = () => {
+  const show = $('lPass').type === 'password';
+  $('lPass').type = show ? 'text' : 'password';
+  $('eye').title = show ? 'Esconder senha' : 'Mostrar senha';
+  $('eye').style.opacity = show ? 1 : .8;
+};
+
 function openDlg(l, pin) {
   editId = l ? l.id : null;
-  editLocked = !!(l && l.locked); editPin = pin || null;
+  setMode(l && l.type === 'm3u' ? 'm3u' : 'xtream');
+  $('lPass').type = 'password';
+  editLocked = !!(l && l.locked); editPin = pin || null; editType = (l && l.type) || 'xtream';
   $('lLock').checked = editLocked; $('lPin').value = ''; $('lPin2').value = '';
   $('pinBox').classList.toggle('hidden', !editLocked); $('pinHint').classList.toggle('hidden', !editLocked);
   $('dlgTitle').textContent = l ? 'Editar lista' : 'Adicionar lista';
   $('lName').value = l ? l.name : '';
-  $('lM3u').value = '';
-  $('lServer').value = l ? l.server : '';
-  $('lUser').value = l ? l.user : '';
-  $('lPass').value = l ? l.pass : '';
+  const isM = l && l.type === 'm3u';
+  $('lM3u').value = isM ? l.server : '';
+  $('lEpg').value = isM ? (l.epg || '') : '';
+  $('lServer').value = l && !isM ? l.server : '';
+  $('lUser').value = l && !isM ? l.user : '';
+  $('lPass').value = l && !isM ? l.pass : '';
   $('dlgMsg').textContent = '';
   $('dlg').showModal();
 }
@@ -192,15 +230,24 @@ $('dlgCancel').onclick = () => $('dlg').close();
 $('listForm').onsubmit = async e => {
   e.preventDefault();
   let server = $('lServer').value.trim(), user = $('lUser').value.trim(), pass = $('lPass').value.trim();
-  const m3u = $('lM3u').value.trim();
-  if (m3u) {
-    const p = parseM3u(m3u);
-    if (!p) { $('dlgMsg').textContent = 'Link não reconhecido. Use o link com usuário e senha (get.php?username=...&password=...).'; return; }
-    ({ server, user, pass } = p);
+  let type = 'xtream', epg = null;
+  if (mode === 'm3u') {
+    const link = $('lM3u').value.trim();
+    if (!link) { $('dlgMsg').textContent = 'Cole o link da lista M3U.'; return; }
+    const p = parseM3u(link);
+    if (p) ({ server, user, pass } = p);                       // get.php com usuário e senha = Xtream
+    else {
+      type = 'm3u'; user = ''; pass = '';
+      server = /^https?:\/\//i.test(link) ? link : 'http://' + link;
+      epg = $('lEpg').value.trim();
+      if (epg && !/^https?:\/\//i.test(epg)) epg = 'http://' + epg;
+    }
   }
-  if (server && !/^https?:\/\//i.test(server)) server = 'http://' + server;
-  server = server.replace(/\/+$/, '');
-  if (!server || !user || !pass) { $('dlgMsg').textContent = 'Preencha servidor, usuário e senha, ou cole o link M3U.'; return; }
+  if (type === 'xtream') {
+    if (server && !/^https?:\/\//i.test(server)) server = 'http://' + server;
+    server = server.replace(/\/+$/, '');
+    if (!server || !user || !pass) { $('dlgMsg').textContent = 'Preencha servidor, usuário e senha.'; return; }
+  }
   let name = $('lName').value.trim();
   if (!name) { try { name = new URL(server).hostname; } catch (_) { name = 'Minha lista'; } }
   // PIN
@@ -218,10 +265,21 @@ $('listForm').onsubmit = async e => {
       p_mac: dev.mac, p_key: dev.key, p_id: editId || crypto.randomUUID(),
       p_name: name, p_server: server, p_user: user, p_pass: pass,
       p_pin: editPin, p_new_pin: newPin, p_remove_pin: removePin,
+      ...(type === 'm3u' || editType === 'm3u' ? { p_type: type, p_epg: epg ?? '' } : {}),
     }));
     $('dlg').close();
   } catch (err) { $('dlgMsg').textContent = err.message; }
 };
+
+// Aberto pelo QR Code da versão Play Store: esconde as opções de compra/registro (regras da Google Play)
+if (new URLSearchParams(location.search).get('app') === 'play') {
+  try { sessionStorage.setItem('mavi_play', '1'); } catch (_) {}
+}
+let fromPlay = false; try { fromPlay = sessionStorage.getItem('mavi_play') === '1'; } catch (_) {}
+if (fromPlay) {
+  document.querySelectorAll('a[href="registrar.html"]').forEach(a => a.remove());
+  const r = document.getElementById('btnReg'); if (r) r.remove();
+}
 
 // Volta direto se já entrou antes neste navegador; aceita ?mac=...&key=... no link
 (async () => {
