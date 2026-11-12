@@ -14,13 +14,13 @@ create table if not exists public.plan_prices (
   title         text not null,
   price         numeric(10,2) not null check (price > 0),
   days          int,                           -- null = vitalício
-  installments  int not null default 1,        -- parcelas máximas no cartão
+  installments  int not null default 1,        -- parcelas no cartão (1 = só à vista)
   active        boolean not null default true
 );
 insert into public.plan_prices (plan, title, price, days, installments) values
   ('mensal',    'MAVI Streaming+ — Plano Mensal (30 dias)',  10.50,  30,  1),
-  ('anual',     'MAVI Streaming+ — Plano Anual (365 dias)',  35.00, 365,  3),
-  ('vitalicio', 'MAVI Streaming+ — Plano Vitalício',        300.00, null, 12)
+  ('anual',     'MAVI Streaming+ — Plano Anual (365 dias)',  35.00, 365,  1),
+  ('vitalicio', 'MAVI Streaming+ — Plano Vitalício',        300.00, null, 1)
 on conflict (plan) do update set title = excluded.title, price = excluded.price,
   days = excluded.days, installments = excluded.installments;
 
