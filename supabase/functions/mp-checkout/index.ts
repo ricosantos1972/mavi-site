@@ -16,11 +16,16 @@ const SB_URL = Deno.env.get('SUPABASE_URL')!;
 const SB_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const MP_TOKEN = Deno.env.get('MP_ACCESS_TOKEN') ?? '';
 
-const CORS = {
-  'Access-Control-Allow-Origin': SITE,
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'content-type, apikey, authorization, x-client-info',
-  'Vary': 'Origin',
+const ORIGINS = [SITE, 'https://www.mavistreaming.com.br'];
+let CORS: Record<string, string> = {};
+const setCors = (req: Request) => {
+  const o = req.headers.get('origin') ?? '';
+  CORS = {
+    'Access-Control-Allow-Origin': ORIGINS.includes(o) ? o : SITE,
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'content-type, apikey, authorization, x-client-info',
+    'Vary': 'Origin',
+  };
 };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -57,6 +62,7 @@ async function confirmPayment(paymentId: string) {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 Deno.serve(async (req) => {
+  setCors(req);
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
   if (!MP_TOKEN) return json({ error: 'Pagamento indisponível no momento.' }, 503);
 
