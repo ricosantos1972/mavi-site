@@ -109,3 +109,11 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
   nav a { margin-left: 10px; font-size: 13px; }
   header.top img { height: 48px; }
 }
+
+/* Selo de pagamento seguro */
+.secure { margin-top: 14px; border: 1px solid rgba(62,213,152,.35); background: rgba(62,213,152,.07); border-radius: var(--radius); padding: 14px 16px; }
+.secure h4 { margin: 0 0 8px; display: flex; align-items: center; gap: 8px; color: var(--ok); font-size: 15px; }
+.secure ul { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 6px; font-size: 13.5px; color: var(--dim); }
+.secure li { display: flex; gap: 8px; align-items: flex-start; }
+.secure li::before { content: "✓"; color: var(--ok); font-weight: 900; flex: none; }
+.secure .pays { margin-top: 10px; font-size: 13px; color: var(--text, #F5F3FF); }

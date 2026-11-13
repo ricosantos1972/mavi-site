@@ -57,7 +57,16 @@
       </div>
       <p class="checkout-total" style="margin:16px 0 0">Total: <strong id="payTotal">R$ 10,50</strong></p>
       <div style="margin-top:12px"><button class="btn" type="button" id="btnPay" data-mp-checkout-cta="checkout-pro" onclick="startCheckout()">Pagar com Mercado Pago (Pix ou cartão)</button></div>
-      <p class="notice" style="margin-top:14px">Você paga no ambiente seguro do Mercado Pago. Aprovado o pagamento, o aplicativo é ativado na hora — não precisa enviar comprovante.</p>
+      <div class="secure">
+        <h4><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Pagamento 100% seguro</h4>
+        <ul>
+          <li>O pagamento é feito na página oficial do Mercado Pago (endereço mercadopago.com.br, com cadeado).</li>
+          <li>Nosso site não vê nem guarda dados do seu cartão.</li>
+          <li>Pix: o Mercado Pago gera o QR Code e o código "copia e cola" na hora — é só pagar pelo app do seu banco.</li>
+          <li>Aprovado o pagamento, o aplicativo é ativado na hora. Não precisa enviar comprovante.</li>
+        </ul>
+        <div class="pays"><b>Formas de pagamento:</b> Pix · Cartão de crédito · Saldo Mercado Pago — à vista</div>
+      </div>
     </div>
 
     <div id="msg" class="msg"></div>
