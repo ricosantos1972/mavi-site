@@ -51,15 +51,23 @@
     <!-- Compra (em breve: Mercado Pago) -->
     <div id="payBox" class="hidden">
       <div class="grid3" style="margin-top:10px">
-        <div class="card plan sel" data-plan="mensal"><h3>Mensal</h3><div class="price">Em breve</div><p>30 dias</p></div>
-        <div class="card plan" data-plan="anual"><h3>Anual</h3><div class="price">Em breve</div><p>365 dias</p></div>
-        <div class="card plan" data-plan="vitalicio"><h3>Vitalício</h3><div class="price">Em breve</div><p>Para sempre neste aparelho</p></div>
+        <div class="card plan sel" data-plan="mensal"><h3>Mensal</h3><div class="price" data-price="mensal">R$ 10,50</div><p>30 dias</p></div>
+        <div class="card plan" data-plan="anual"><h3>Anual</h3><div class="price" data-price="anual">R$ 35,00</div><p>365 dias</p></div>
+        <div class="card plan" data-plan="vitalicio"><h3>Vitalício</h3><div class="price" data-price="vitalicio">R$ 300,00</div><p>Para sempre neste aparelho</p></div>
       </div>
-      <div style="margin-top:18px"><button class="btn" type="button" id="btnPay">Pagar com Pix ou cartão</button></div>
-      <p class="notice" style="margin-top:14px">Pagamento online em breve (Mercado Pago). Por enquanto, a ativação é feita com um código.</p>
+      <p class="checkout-total" style="margin:16px 0 0">Total: <strong id="payTotal">R$ 10,50</strong></p>
+      <div style="margin-top:12px"><button class="btn" type="button" id="btnPay" data-mp-checkout-cta="checkout-pro" onclick="startCheckout()">Pagar com Mercado Pago (Pix ou cartão)</button></div>
+      <p class="notice" style="margin-top:14px">Você paga no ambiente seguro do Mercado Pago. Aprovado o pagamento, o aplicativo é ativado na hora — não precisa enviar comprovante.</p>
     </div>
 
     <div id="msg" class="msg"></div>
+  </div>
+
+  <!-- Volta do Mercado Pago -->
+  <div class="panel hidden" id="payResult">
+    <h2 style="margin-top:0" id="prTitle">Conferindo o pagamento...</h2>
+    <p id="prText" style="color:var(--dim)">Aguarde alguns segundos.</p>
+    <div id="prDev" class="status hidden"><span id="prDot" class="dot"></span><span id="prDevText"></span></div>
   </div>
 </div>
 
@@ -103,7 +111,58 @@ $('tabPay').onclick = () => { $('tabPay').classList.add('on'); $('tabCode').clas
 document.querySelectorAll('.plan').forEach(c => c.onclick = () => {
   document.querySelectorAll('.plan').forEach(x => x.classList.remove('sel')); c.classList.add('sel');
 });
-$('btnPay').onclick = () => msg('Pagamento online em breve. Use um código de ativação por enquanto.');
+const FN = SUPABASE_URL + '/functions/v1/';
+const brl = v => 'R$ ' + Number(v).toFixed(2).replace('.', ',');
+const selPlan = () => (document.querySelector('.plan.sel') || {}).dataset?.plan || 'mensal';
+const prices = {};
+function paintTotal() { const el = document.querySelector('[data-price="' + selPlan() + '"]'); $('payTotal').textContent = el ? el.textContent : ''; }
+document.querySelectorAll('.plan').forEach(c => c.addEventListener('click', paintTotal));
+// Preços oficiais do banco (o valor cobrado é sempre o do servidor)
+rpc('mavi_prices').then(list => { (list || []).forEach(p => { prices[p.plan] = p; const el = document.querySelector('[data-price="' + p.plan + '"]'); if (el) el.textContent = brl(p.price); }); paintTotal(); }).catch(() => {});
+
+async function startCheckout() {
+  const d = dev(); if (!d) return;
+  $('btnPay').disabled = true; msg('Abrindo o Mercado Pago...', true);
+  try {
+    const r = await fetch(FN + 'mp-checkout', { method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY },
+                                                body: JSON.stringify({ mac: d.mac, key: d.key, plan: selPlan() }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.init_point) throw new Error(j.error || 'Não foi possível iniciar o pagamento.');
+    saveDev(d);
+    location.href = j.init_point;     // página segura do Mercado Pago
+  } catch (err) { msg(err.message); $('btnPay').disabled = false; }
+}
+
+// ---- Volta do Mercado Pago: ?ref=...&payment_id=...&status=... ----
+async function payReturn(ref, pid) {
+  $('payResult').classList.remove('hidden');
+  $('payResult').scrollIntoView({ behavior: 'smooth' });
+  const show = (title, text) => { $('prTitle').textContent = title; $('prText').textContent = text; };
+  const dev2 = st => { $('prDev').classList.remove('hidden'); $('prDevText').textContent = statusText(st); $('prDot').className = 'dot ' + dotClass(st.status); };
+  let checked = false;
+  for (let i = 0; i < 40; i++) {                 // até ~2 minutos
+    let s;
+    try {
+      if (pid && !checked) {                    // confere direto no Mercado Pago (caso a notificação atrase)
+        const r = await fetch(FN + 'mp-checkout?ref=' + encodeURIComponent(ref) + '&payment_id=' + encodeURIComponent(pid), { headers: { 'apikey': SUPABASE_KEY }, cache: 'no-store' });
+        s = await r.json(); checked = true;
+        if (!r.ok) s = await rpc('mavi_pay_status', { p_ref: ref });
+      } else s = await rpc('mavi_pay_status', { p_ref: ref });
+    } catch (e) { show('Não encontramos este pagamento', e.message); return; }
+    if (s.applied) {
+      show('Pagamento aprovado! ✅', 'Aplicativo ativado. Feche e abra o aplicativo para liberar.');
+      dev2(s.device); return;
+    }
+    if (['rejected', 'cancelled'].includes(s.status)) { show('Pagamento não aprovado', 'Nada foi cobrado. Você pode tentar de novo com outra forma de pagamento.'); return; }
+    if (s.status === 'valor_divergente') { show('Pagamento em análise', 'Fale com o suporte informando o código: ' + ref); return; }
+    if (['refunded', 'charged_back'].includes(s.status)) { show('Pagamento estornado', 'Este pagamento foi devolvido.'); return; }
+    show('Aguardando a confirmação do pagamento...', s.status === 'pending'
+      ? 'Se escolheu Pix, pague o código no app do seu banco. Assim que o pagamento cair, o aplicativo é ativado sozinho — pode fechar esta página.'
+      : 'Isso leva só alguns segundos.');
+    await new Promise(r => setTimeout(r, i < 10 ? 3000 : 6000));
+  }
+  show('Ainda aguardando a confirmação', 'Quando o Mercado Pago confirmar, o aplicativo é ativado sozinho. Pode fechar esta página.');
+}
 
 $('codeBox').onsubmit = async e => {
   e.preventDefault();
@@ -123,6 +182,7 @@ $('codeBox').onsubmit = async e => {
 // Preenche com o aparelho já usado neste navegador (ou ?mac=&key= no link)
 (() => {
   const q = new URLSearchParams(location.search);
+  if (q.get('ref')) { $('tabPay').click(); payReturn(q.get('ref'), q.get('payment_id') || q.get('collection_id')); }
   const d = q.get('mac') && q.get('key') ? { mac: normMac(q.get('mac')), key: q.get('key') } : loadDev();
   if (d) { $('mac').value = d.mac; $('key').value = d.key; check(); }
 })();

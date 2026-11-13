@@ -63,6 +63,17 @@
         </table>
       </div>
     </div>
+
+    <div class="panel">
+      <h2 style="margin-top:0">Pagamentos (Mercado Pago) <button class="btn ghost small" id="btnPays" type="button" style="float:right">Atualizar</button></h2>
+      <p style="color:var(--dim);margin-top:0;font-size:14px">Aprovado = aparelho ativado automaticamente. Estornos não desativam sozinhos: bloqueie o aparelho na busca acima, se precisar.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Data</th><th>Aparelho</th><th>Plano</th><th>Valor</th><th>Forma</th><th>Situação</th></tr></thead>
+          <tbody id="payRows"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -125,7 +136,24 @@ async function search() {
   }
 }
 
-function show() { $('loginBox').classList.add('hidden'); $('main').classList.remove('hidden'); $('btnOut').classList.remove('hidden'); search(); loadCodes(); }
+function show() { $('loginBox').classList.add('hidden'); $('main').classList.remove('hidden'); $('btnOut').classList.remove('hidden'); search(); loadCodes(); loadPays(); }
+
+const PAY_ST = { approved: '✅ Aprovado', pending: '⏳ Pendente', in_process: '⏳ Em análise', rejected: '❌ Recusado', cancelled: 'Cancelado',
+  refunded: '↩️ Estornado', charged_back: '⚠️ Contestado', criado: 'Abriu o checkout', valor_divergente: '⚠️ Valor divergente' };
+const PAY_TP = { bank_transfer: 'Pix', credit_card: 'Cartão crédito', debit_card: 'Cartão débito', account_money: 'Saldo MP' };
+async function loadPays() {
+  try {
+    const rows = await rpc('mavi_admin_payments', { p_limit: 100 }, token);
+    $('payRows').innerHTML = rows.length ? rows.map(x => `<tr>
+      <td>${esc(new Date(x.created_at).toLocaleString('pt-BR'))}</td>
+      <td><b style="font-family:monospace">${esc(x.mac)}</b>${x.note ? '<br><span style="color:var(--dim)">' + esc(x.note) + '</span>' : ''}</td>
+      <td>${esc(x.plan)}</td><td>R$ ${Number(x.amount).toFixed(2).replace('.', ',')}</td>
+      <td>${esc(PAY_TP[x.payment_type] || x.payment_type || '')}</td>
+      <td>${esc(PAY_ST[x.status] || x.status)}${x.mp_payment_id ? '<br><span style="color:var(--dim);font-size:12px">MP ' + esc(x.mp_payment_id) + '</span>' : ''}</td></tr>`).join('')
+      : '<tr><td colspan="6" style="color:var(--dim)">Nenhum pagamento ainda.</td></tr>';
+  } catch (e) { $('payRows').innerHTML = `<tr><td colspan="6" style="color:var(--bad)">${esc(e.message)}</td></tr>`; }
+}
+$('btnPays').onclick = loadPays;
 
 const fmtCode = c => (c.match(/.{1,4}/g) || []).join('-');
 async function loadCodes() {
